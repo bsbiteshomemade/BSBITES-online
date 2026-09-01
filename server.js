@@ -193,7 +193,7 @@ async function sheet(action,data){
   ){
     throw new Error(
       d.error||
-      Google Sheets request failed (${r.status})
+      `Google Sheets request failed (${r.status})`
     );
   }
 
