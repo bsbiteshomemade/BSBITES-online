@@ -99,7 +99,7 @@ function makeToken(customer){
     .update(raw)
     .digest("base64url");
 
-  return ${raw}.${sig};
+  return `${raw}.${sig}`;
 }
 
 function readToken(req){
