@@ -77,11 +77,6 @@ footer a{color:#ffd5c8;text-decoration:none}
 .order-card b{color:var(--brown)}
 .status-pill{display:inline-block;padding:4px 9px;border-radius:12px;background:#e8f5e9;color:#2e7d32;font-size:.78rem;font-weight:bold}
 @media(max-width:800px){.account-area{gap:5px}.auth-btn{padding:9px 11px;font-size:.85rem}}
-
-.password-wrap{position:relative;display:flex;align-items:center}
-.password-wrap input{padding-right:78px!important;width:100%}
-.show-password{position:absolute;right:6px;top:6px;height:36px;border:0;border-radius:8px;background:#f1dfd5;color:var(--brown);font-weight:bold;cursor:pointer;padding:0 9px;font-family:inherit}
-.show-password:hover{background:#ead0c3}
 </style>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
@@ -173,7 +168,9 @@ footer a{color:#ffd5c8;text-decoration:none}
       <label>Name</label>
       <input id="customerName" placeholder="Your name">
       <label>Phone</label>
-      <input id="customerPhone" type="tel" placeholder="10-digit mobile number">
+      <input id="customerPhone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile number">
+      <label>Email <span style="font-weight:normal;color:#80665d">(optional)</span></label>
+      <input id="customerEmail" type="email" autocomplete="email" placeholder="your@email.com">
       <label>Delivery Address</label>
       <textarea id="customerAddress" rows="3" placeholder="House no., street, city, state, PIN"></textarea>
 
@@ -185,7 +182,7 @@ footer a{color:#ffd5c8;text-decoration:none}
       </div>
 
       <button id="payOnlineBtn" class="pay-btn" type="button" onclick="startPayment()">Pay Securely</button>
-      <button class="whatsapp" onclick="sendWhatsApp()">Send Order Confirmation on WhatsApp</button>
+      <button type="button" id="whatsappBtn" class="whatsapp" onclick="sendWhatsApp()">Send Order Confirmation on WhatsApp</button>
       <p class="notice">After successful payment, your order will be verified before it is confirmed. If a payment fails, you can retry without losing your cart.</p>
     </div>
   </aside>
@@ -200,10 +197,7 @@ footer a{color:#ffd5c8;text-decoration:none}
       <label>Mobile number or email</label>
       <input id="loginIdentifier" placeholder="10-digit mobile or email" autocomplete="username">
       <label>Password</label>
-      <div class="password-wrap">
-        <input id="loginPassword" type="password" placeholder="Your password" autocomplete="current-password">
-        <button type="button" class="show-password" onclick="togglePassword('loginPassword', this)">👁 Show</button>
-      </div>
+      <input id="loginPassword" type="password" placeholder="Your password" autocomplete="current-password">
       <button class="auth-submit" onclick="loginCustomer()">Sign in</button>
       <div id="loginMsg" class="auth-msg" style="display:none"></div>
       <p style="text-align:center;margin-top:14px">New customer? <button class="auth-link" onclick="showRegister()">Create an account</button></p>
@@ -214,11 +208,7 @@ footer a{color:#ffd5c8;text-decoration:none}
       <label>Name</label><input id="regName" placeholder="Your name" autocomplete="name">
       <label>Mobile number</label><input id="regPhone" type="tel" placeholder="10-digit mobile number" autocomplete="tel">
       <label>Email (optional)</label><input id="regEmail" type="email" placeholder="you@example.com" autocomplete="email">
-      <label>Password</label>
-      <div class="password-wrap">
-        <input id="regPassword" type="password" placeholder="At least 6 characters" autocomplete="new-password">
-        <button type="button" class="show-password" onclick="togglePassword('regPassword', this)">👁 Show</button>
-      </div>
+      <label>Password</label><input id="regPassword" type="password" placeholder="At least 6 characters" autocomplete="new-password">
       <button class="auth-submit" onclick="registerCustomer()">Create account</button>
       <div id="registerMsg" class="auth-msg" style="display:none"></div>
       <p style="text-align:center;margin-top:14px">Already registered? <button class="auth-link" onclick="showLogin()">Sign in</button></p>
@@ -289,18 +279,6 @@ function showLogin(){document.getElementById('loginView').style.display='block';
 function showRegister(){document.getElementById('loginView').style.display='none';document.getElementById('registerView').style.display='block';document.getElementById('accountView').style.display='none';}
 function showAccount(){document.getElementById('loginView').style.display='none';document.getElementById('registerView').style.display='none';document.getElementById('accountView').style.display='block';if(currentCustomer)document.getElementById('accountWelcome').textContent=`Welcome back, ${currentCustomer.name}!`; }
 function updateAccountButton(){const b=document.getElementById('accountBtn');if(!b)return;b.textContent=currentCustomer?`Hi, ${currentCustomer.name.split(' ')[0]} 👋`:'Sign in';}
-function togglePassword(id, button){
-  const input=document.getElementById(id);
-  if(!input)return;
-  if(input.type === "password"){
-    input.type="text";
-    button.textContent="🙈 Hide";
-  }else{
-    input.type="password";
-    button.textContent="👁 Show";
-  }
-}
-
 async function registerCustomer(){
   const name=document.getElementById('regName').value.trim();
   const phone=document.getElementById('regPhone').value.replace(/\D/g,'');
@@ -325,7 +303,15 @@ async function loginCustomer(){
     authToken=d.token; currentCustomer=d.customer; localStorage.setItem('bsBitesAuthToken',authToken); updateAccountButton(); prefillCustomerForm(); showAccount(); await loadOrders();
   }catch(e){setMsg('loginMsg',e.message);}
 }
-function prefillCustomerForm(){if(!currentCustomer)return;document.getElementById("customerName").value=currentCustomer.name||"";document.getElementById("customerPhone").value=currentCustomer.phone||"";document.getElementById("customerEmail").value=currentCustomer.email||"";}
+function prefillCustomerForm(){
+  if(!currentCustomer)return;
+  const nameEl=document.getElementById("customerName");
+  const phoneEl=document.getElementById("customerPhone");
+  const emailEl=document.getElementById("customerEmail");
+  if(nameEl) nameEl.value=currentCustomer.name||"";
+  if(phoneEl) phoneEl.value=currentCustomer.phone||"";
+  if(emailEl) emailEl.value=currentCustomer.email||"";
+}
 async function loadAccount(){
   try{const r=await apiFetch(`${PAYMENT_API}/auth/me`);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error('expired');currentCustomer=d.customer;updateAccountButton();showAccount();prefillCustomerForm();await loadOrders();}
   catch(e){authToken='';currentCustomer=null;localStorage.removeItem('bsBitesAuthToken');updateAccountButton();showLogin();}
@@ -373,11 +359,13 @@ function renderCart(){
 function total(){return cart.reduce((s,x)=>s+x.price*x.qty,0)}
 
 async function startPayment(){
+  if(!authToken){alert("Please sign in or create a BS Bites account before placing an order.");openAccount();return;}
   if(!cart.length){alert("Please add at least one product.");return;}
   const name = document.getElementById("customerName").value.trim();
   const phone = document.getElementById("customerPhone").value.trim();
   const address = document.getElementById("customerAddress").value.trim();
-  const email = document.getElementById("customerEmail").value.trim();
+  const emailEl = document.getElementById("customerEmail");
+  const email = emailEl ? emailEl.value.trim() : "";
   if(!name || !phone || !address){
     alert("Please fill your name, phone number and delivery address before payment.");
     return;
@@ -482,7 +470,8 @@ function sendWhatsApp(afterPayment=false, paymentId=""){
   const name = document.getElementById("customerName").value.trim();
   const phone = document.getElementById("customerPhone").value.trim();
   const address = document.getElementById("customerAddress").value.trim();
-  const email = document.getElementById("customerEmail").value.trim();
+  const emailEl = document.getElementById("customerEmail");
+  const email = emailEl ? emailEl.value.trim() : "";
   if(!name || !phone || !address){
     alert("Please fill your name, phone number and delivery address.");
     return;
@@ -507,7 +496,10 @@ Payment: ${afterPayment ? "Razorpay - Verified" : "Not yet paid"}
 ${afterPayment ? `Payment ID: ${paymentId}` : "Payment will be completed through the secure checkout."}
 
 Thank you! 🍫`;
-  window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`,"_blank");
+  const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+  // Direct navigation is more reliable on Android than window.open(), which
+  // can be blocked as a popup after an async payment verification.
+  window.location.href = whatsappUrl;
 }
 function openCart(){document.getElementById("cartOverlay").classList.add("open")}
 function closeCart(){document.getElementById("cartOverlay").classList.remove("open")}
@@ -515,6 +507,11 @@ function closeIfOutside(e){if(e.target.id==="cartOverlay") closeCart()}
 function escapeHtml(str){
   return str.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 }
+// Keep payment/order buttons responsive even if a browser blocks a popup.
+window.addEventListener("error", function(event){
+  console.error("BS Bites page error:", event.error || event.message);
+});
+
 renderCart();
 updateAccountButton();
 if(authToken) loadAccount(); else setTimeout(()=>openAccount(),350);
