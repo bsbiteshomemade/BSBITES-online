@@ -1,7 +1,7 @@
 const express = require("express");
 const crypto = require("crypto");
-const path = require("path");
 const Razorpay = require("razorpay");
+require("dotenv").config();
 
 const app = express();
 
@@ -19,11 +19,21 @@ const SESSION_SECRET =
   process.env.SESSION_SECRET ||
   "BSBITES_CHANGE_THIS_TO_A_LONG_RANDOM_SECRET";
 
+
+/* =========================
+   PRODUCTS
+========================= */
+
 const PRODUCTS = {
   "Milk Chocolate": 199,
   "Almond Crunch": 249,
   "Kaju Makhana Royal Crunch": 299
 };
+
+
+/* =========================
+   RAZORPAY
+========================= */
 
 const razorpay =
   KEY_ID && KEY_SECRET
@@ -42,12 +52,18 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
 
   if (FRONTEND_URL && origin === FRONTEND_URL) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      origin
+    );
+
     res.setHeader("Vary", "Origin");
+
     res.setHeader(
       "Access-Control-Allow-Methods",
       "GET,POST,OPTIONS"
     );
+
     res.setHeader(
       "Access-Control-Allow-Headers",
       "Content-Type, Authorization"
@@ -67,12 +83,17 @@ app.use((req, res, next) => {
 ========================= */
 
 function cleanPhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  return String(value || "")
+    .replace(/\D/g, "");
 }
 
+
 function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
+
 
 function calculateCart(cart) {
   if (!Array.isArray(cart) || cart.length === 0) {
@@ -92,7 +113,9 @@ function calculateCart(cart) {
       qty < 1 ||
       qty > 50
     ) {
-      throw new Error("Invalid product or quantity.");
+      throw new Error(
+        "Invalid product or quantity."
+      );
     }
 
     total += PRODUCTS[name] * qty;
@@ -111,6 +134,10 @@ function calculateCart(cart) {
 }
 
 
+/* =========================
+   PASSWORD HASHING
+========================= */
+
 function hashPassword(password, salt) {
   return crypto
     .scryptSync(password, salt, 64)
@@ -118,13 +145,19 @@ function hashPassword(password, salt) {
 }
 
 
+/* =========================
+   LOGIN TOKEN
+========================= */
+
 function makeToken(customer) {
   const payload = {
     id: customer.id,
     name: customer.name,
     phone: customer.phone,
     email: customer.email || "",
-    exp: Date.now() + 1000 * 60 * 60 * 24 * 30
+    exp:
+      Date.now() +
+      1000 * 60 * 60 * 24 * 30
   };
 
   const raw = Buffer
@@ -132,7 +165,10 @@ function makeToken(customer) {
     .toString("base64url");
 
   const signature = crypto
-    .createHmac("sha256", SESSION_SECRET)
+    .createHmac(
+      "sha256",
+      SESSION_SECRET
+    )
     .update(raw)
     .digest("base64url");
 
@@ -141,7 +177,8 @@ function makeToken(customer) {
 
 
 function readToken(req) {
-  const header = req.headers.authorization || "";
+  const header =
+    req.headers.authorization || "";
 
   if (!header.startsWith("Bearer ")) {
     return null;
@@ -157,35 +194,59 @@ function readToken(req) {
   const raw = parts[0];
   const signature = parts[1];
 
-  const expected = crypto
-    .createHmac("sha256", SESSION_SECRET)
-    .update(raw)
-    .digest("base64url");
+  const expected =
+    crypto
+      .createHmac(
+        "sha256",
+        SESSION_SECRET
+      )
+      .update(raw)
+      .digest("base64url");
 
-  if (signature.length !== expected.length) {
-    return null;
-  }
-
+  /*
+    Prevent timingSafeEqual from throwing
+    when lengths are different.
+  */
   if (
-    !crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expected)
-    )
+    signature.length !==
+    expected.length
   ) {
     return null;
   }
 
   try {
-    const payload = JSON.parse(
-      Buffer.from(raw, "base64url").toString("utf8")
-    );
+    if (
+      !crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expected)
+      )
+    ) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
 
-    if (!payload.id || payload.exp < Date.now()) {
+  try {
+    const payload =
+      JSON.parse(
+        Buffer.from(
+          raw,
+          "base64url"
+        ).toString("utf8")
+      );
+
+    if (
+      !payload.id ||
+      !payload.exp ||
+      payload.exp < Date.now()
+    ) {
       return null;
     }
 
     return payload;
-  } catch (error) {
+
+  } catch {
     return null;
   }
 }
@@ -196,11 +257,30 @@ function requireAuth(req, res, next) {
 
   if (!customer) {
     return res.status(401).json({
-      error: "Please sign in to continue."
+      error:
+        "Please sign in to continue."
     });
   }
 
   req.customer = customer;
+
+  next();
+}
+
+
+/*
+  Optional login.
+
+  If customer is logged in:
+      req.customer = customer
+
+  If customer is not logged in:
+      req.customer = null
+
+  This is what allows guest checkout.
+*/
+function optionalAuth(req, res, next) {
+  req.customer = readToken(req);
   next();
 }
 
@@ -216,28 +296,38 @@ async function sheet(action, data) {
     );
   }
 
-  const response = await fetch(GOOGLE_SCRIPT_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: action,
-      ...data
-    })
-  });
+  const response = await fetch(
+    GOOGLE_SCRIPT_URL,
+    {
+      method: "POST",
 
-  const text = await response.text();
+      headers: {
+        "Content-Type":
+          "text/plain;charset=utf-8"
+      },
+
+      body: JSON.stringify({
+        action: action,
+        ...data
+      })
+    }
+  );
+
+  const text =
+    await response.text();
 
   let result = {};
 
   try {
     result = JSON.parse(text);
-  } catch (error) {
+  } catch {
     result = {};
   }
 
-  if (!response.ok || result.ok === false) {
+  if (
+    !response.ok ||
+    result.ok === false
+  ) {
     throw new Error(
       result.error ||
       "Google Sheets request failed (" +
@@ -254,193 +344,319 @@ async function sheet(action, data) {
    BASIC ROUTES
 ========================= */
 
-app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    service: "BS Bites Backend"
-  });
-});
+app.get(
+  "/health",
+  (req, res) => {
+    res.json({
+      ok: true,
+      service: "BS Bites Backend"
+    });
+  }
+);
 
 
-app.get("/api/config", (req, res) => {
-  res.json({
-    keyId: KEY_ID
-  });
-});
+app.get(
+  "/api/config",
+  (req, res) => {
+    res.json({
+      keyId: KEY_ID
+    });
+  }
+);
 
 
 /* =========================
    CUSTOMER REGISTER
 ========================= */
 
-app.post("/api/auth/register", async (req, res) => {
-  try {
-    const name = String(req.body.name || "").trim();
-    const phone = cleanPhone(req.body.phone);
-    const email = normalizeEmail(req.body.email);
-    const password = String(req.body.password || "");
+app.post(
+  "/api/auth/register",
+  async (req, res) => {
+    try {
 
-    if (
-      !name ||
-      !/^[0-9]{10}$/.test(phone) ||
-      password.length < 6
-    ) {
-      return res.status(400).json({
-        error:
-          "Please enter your name, a valid 10-digit mobile number and a password of at least 6 characters."
-      });
-    }
+      const name =
+        String(
+          req.body.name || ""
+        ).trim();
 
-    if (
-      email &&
-      !/^\S+@\S+\.\S+$/.test(email)
-    ) {
-      return res.status(400).json({
-        error: "Please enter a valid email address."
-      });
-    }
+      const phone =
+        cleanPhone(
+          req.body.phone
+        );
 
-    const existing = await sheet("findCustomer", {
-      identifier: phone
-    });
+      const email =
+        normalizeEmail(
+          req.body.email
+        );
 
-    if (existing.customer) {
-      return res.status(409).json({
-        error:
-          "An account with this mobile number already exists. Please sign in."
-      });
-    }
+      const password =
+        String(
+          req.body.password || ""
+        );
 
-    if (email) {
-      const existingEmail = await sheet("findCustomer", {
-        identifier: email
-      });
 
-      if (existingEmail.customer) {
-        return res.status(409).json({
+      if (
+        !name ||
+        !/^[0-9]{10}$/.test(phone) ||
+        password.length < 6
+      ) {
+        return res.status(400).json({
           error:
-            "An account with this email already exists. Please sign in."
+            "Please enter your name, a valid 10-digit mobile number and a password of at least 6 characters."
         });
       }
+
+
+      if (
+        email &&
+        !/^\S+@\S+\.\S+$/.test(email)
+      ) {
+        return res.status(400).json({
+          error:
+            "Please enter a valid email address."
+        });
+      }
+
+
+      const existing =
+        await sheet(
+          "findCustomer",
+          {
+            identifier: phone
+          }
+        );
+
+
+      if (existing.customer) {
+        return res.status(409).json({
+          error:
+            "An account with this mobile number already exists. Please sign in."
+        });
+      }
+
+
+      if (email) {
+
+        const existingEmail =
+          await sheet(
+            "findCustomer",
+            {
+              identifier: email
+            }
+          );
+
+        if (existingEmail.customer) {
+          return res.status(409).json({
+            error:
+              "An account with this email already exists. Please sign in."
+          });
+        }
+      }
+
+
+      const salt =
+        crypto
+          .randomBytes(16)
+          .toString("hex");
+
+
+      const passwordHash =
+        hashPassword(
+          password,
+          salt
+        );
+
+
+      const customer = {
+        id:
+          crypto.randomUUID(),
+
+        name:
+          name,
+
+        phone:
+          phone,
+
+        email:
+          email,
+
+        passwordSalt:
+          salt,
+
+        passwordHash:
+          passwordHash,
+
+        createdAt:
+          new Date().toISOString()
+      };
+
+
+      await sheet(
+        "createCustomer",
+        {
+          customer:
+            customer
+        }
+      );
+
+
+      const safeCustomer = {
+        id:
+          customer.id,
+
+        name:
+          customer.name,
+
+        phone:
+          customer.phone,
+
+        email:
+          customer.email
+      };
+
+
+      res.json({
+        token:
+          makeToken(
+            safeCustomer
+          ),
+
+        customer:
+          safeCustomer
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "REGISTER ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error:
+          error.message ||
+          "Could not create account."
+      });
     }
-
-    const salt = crypto
-      .randomBytes(16)
-      .toString("hex");
-
-    const passwordHash = hashPassword(
-      password,
-      salt
-    );
-
-    const customer = {
-      id: crypto.randomUUID(),
-      name: name,
-      phone: phone,
-      email: email,
-      passwordSalt: salt,
-      passwordHash: passwordHash,
-      createdAt: new Date().toISOString()
-    };
-
-    await sheet("createCustomer", {
-      customer: customer
-    });
-
-    const safeCustomer = {
-      id: customer.id,
-      name: customer.name,
-      phone: customer.phone,
-      email: customer.email
-    };
-
-    res.json({
-      token: makeToken(safeCustomer),
-      customer: safeCustomer
-    });
-
-  } catch (error) {
-    console.error("REGISTER ERROR:", error);
-
-    res.status(500).json({
-      error:
-        error.message ||
-        "Could not create account."
-    });
   }
-});
+);
 
 
 /* =========================
    CUSTOMER LOGIN
 ========================= */
 
-app.post("/api/auth/login", async (req, res) => {
-  try {
-    const identifier =
-      String(req.body.identifier || "").trim();
+app.post(
+  "/api/auth/login",
+  async (req, res) => {
+    try {
 
-    const password =
-      String(req.body.password || "");
+      const identifier =
+        String(
+          req.body.identifier || ""
+        ).trim();
 
-    if (!identifier || !password) {
-      return res.status(400).json({
-        error:
-          "Please enter your mobile/email and password."
-      });
-    }
+      const password =
+        String(
+          req.body.password || ""
+        );
 
-    const lookup = await sheet(
-      "findCustomer",
-      {
-        identifier: identifier.includes("@")
-          ? normalizeEmail(identifier)
-          : cleanPhone(identifier)
+
+      if (
+        !identifier ||
+        !password
+      ) {
+        return res.status(400).json({
+          error:
+            "Please enter your mobile/email and password."
+        });
       }
-    );
 
-    const customer = lookup.customer;
 
-    if (!customer) {
-      return res.status(401).json({
+      const lookup =
+        await sheet(
+          "findCustomer",
+          {
+            identifier:
+              identifier.includes("@")
+                ? normalizeEmail(identifier)
+                : cleanPhone(identifier)
+          }
+        );
+
+
+      const customer =
+        lookup.customer;
+
+
+      if (!customer) {
+        return res.status(401).json({
+          error:
+            "Account not found. Please check your details or create an account."
+        });
+      }
+
+
+      const passwordHash =
+        hashPassword(
+          password,
+          customer.passwordSalt || ""
+        );
+
+
+      if (
+        passwordHash !==
+        customer.passwordHash
+      ) {
+        return res.status(401).json({
+          error:
+            "Incorrect password."
+        });
+      }
+
+
+      const safeCustomer = {
+        id:
+          customer.id,
+
+        name:
+          customer.name,
+
+        phone:
+          customer.phone,
+
+        email:
+          customer.email || ""
+      };
+
+
+      res.json({
+        token:
+          makeToken(
+            safeCustomer
+          ),
+
+        customer:
+          safeCustomer
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "LOGIN ERROR:",
+        error
+      );
+
+      res.status(500).json({
         error:
-          "Account not found. Please check your details or create an account."
+          error.message ||
+          "Could not sign in."
       });
     }
-
-    const passwordHash = hashPassword(
-      password,
-      customer.passwordSalt || ""
-    );
-
-    if (passwordHash !== customer.passwordHash) {
-      return res.status(401).json({
-        error: "Incorrect password."
-      });
-    }
-
-    const safeCustomer = {
-      id: customer.id,
-      name: customer.name,
-      phone: customer.phone,
-      email: customer.email || ""
-    };
-
-    res.json({
-      token: makeToken(safeCustomer),
-      customer: safeCustomer
-    });
-
-  } catch (error) {
-    console.error("LOGIN ERROR:", error);
-
-    res.status(500).json({
-      error:
-        error.message ||
-        "Could not sign in."
-    });
   }
-});
+);
 
 
 /* =========================
@@ -451,9 +667,12 @@ app.get(
   "/api/auth/me",
   requireAuth,
   (req, res) => {
+
     res.json({
-      customer: req.customer
+      customer:
+        req.customer
     });
+
   }
 );
 
@@ -466,20 +685,31 @@ app.get(
   "/api/orders",
   requireAuth,
   async (req, res) => {
+
     try {
-      const result = await sheet(
-        "getOrders",
-        {
-          customerId: req.customer.id
-        }
-      );
+
+      const result =
+        await sheet(
+          "getOrders",
+          {
+            customerId:
+              req.customer.id
+          }
+        );
+
 
       res.json({
-        orders: result.orders || []
+        orders:
+          result.orders || []
       });
 
+
     } catch (error) {
-      console.error("ORDERS ERROR:", error);
+
+      console.error(
+        "ORDERS ERROR:",
+        error
+      );
 
       res.status(500).json({
         error:
@@ -492,62 +722,102 @@ app.get(
 
 /* =========================
    CREATE RAZORPAY ORDER
+   GUEST CHECKOUT ENABLED
 ========================= */
 
 app.post(
   "/api/create-order",
-  requireAuth,
+  optionalAuth,
   async (req, res) => {
+
     try {
+
+      /*
+        IMPORTANT:
+        There is NO requireAuth here.
+
+        A customer can pay without logging in.
+      */
+
       if (!razorpay) {
+
         return res.status(503).json({
           error:
             "Online payment is not configured yet."
         });
       }
 
+
       const cartResult =
-        calculateCart(req.body.cart);
+        calculateCart(
+          req.body.cart
+        );
+
 
       const customer =
         req.body.customer || {};
 
+
       const name =
-        String(customer.name || "").trim();
+        String(
+          customer.name || ""
+        ).trim();
+
 
       const phone =
-        cleanPhone(customer.phone);
+        cleanPhone(
+          customer.phone
+        );
+
 
       const email =
-        normalizeEmail(customer.email);
+        normalizeEmail(
+          customer.email
+        );
+
 
       const address =
-        String(customer.address || "").trim();
+        String(
+          customer.address || ""
+        ).trim();
+
 
       if (
         !name ||
         !/^[0-9]{10}$/.test(phone) ||
         !address
       ) {
+
         return res.status(400).json({
           error:
             "Please provide a valid name, 10-digit phone number and delivery address."
         });
       }
 
+
       const razorpayOrder =
         await razorpay.orders.create({
-          amount: cartResult.total * 100,
-          currency: "INR",
+
+          amount:
+            cartResult.total * 100,
+
+          currency:
+            "INR",
+
           receipt:
-            "BSB-" + Date.now(),
+            "BSB-" +
+            Date.now(),
 
           notes: {
+
             customer_name:
               name.slice(0, 255),
 
             customer_phone:
               phone,
+
+            customer_email:
+              email.slice(0, 255),
 
             products:
               cartResult.normalized
@@ -562,7 +832,9 @@ app.post(
           }
         });
 
+
       res.json({
+
         orderId:
           razorpayOrder.id,
 
@@ -573,7 +845,9 @@ app.post(
           razorpayOrder.currency
       });
 
+
     } catch (error) {
+
       console.error(
         "CREATE ORDER ERROR:",
         error
@@ -591,20 +865,33 @@ app.post(
 
 /* =========================
    VERIFY PAYMENT
+   GUEST CHECKOUT ENABLED
 ========================= */
 
 app.post(
   "/api/verify-payment",
-  requireAuth,
+  optionalAuth,
   async (req, res) => {
+
     try {
+
+      /*
+        IMPORTANT:
+        There is NO requireAuth here.
+
+        Guest customers can complete payment.
+      */
+
       if (!razorpay) {
+
         return res.status(503).json({
           verified: false,
+
           error:
             "Online payment is not configured yet."
         });
       }
+
 
       const {
         razorpay_order_id,
@@ -612,17 +899,27 @@ app.post(
         razorpay_signature
       } = req.body;
 
+
       if (
         !razorpay_order_id ||
         !razorpay_payment_id ||
         !razorpay_signature
       ) {
+
         return res.status(400).json({
-          verified: false,
+
+          verified:
+            false,
+
           error:
             "Missing payment verification data."
         });
       }
+
+
+      /* =========================
+         VERIFY RAZORPAY SIGNATURE
+      ========================= */
 
       const expectedSignature =
         crypto
@@ -637,62 +934,181 @@ app.post(
           )
           .digest("hex");
 
+
       if (
         expectedSignature !==
         razorpay_signature
       ) {
+
         return res.status(400).json({
-          verified: false,
+
+          verified:
+            false,
+
           error:
             "Payment signature verification failed."
         });
       }
+
+
+      /* =========================
+         FETCH PAYMENT
+      ========================= */
 
       const payment =
         await razorpay.payments.fetch(
           razorpay_payment_id
         );
 
+
       if (
         payment.order_id !==
-          razorpay_order_id ||
+          razorpay_order_id
+      ) {
+
+        return res.status(400).json({
+
+          verified:
+            false,
+
+          error:
+            "Payment does not belong to this order."
+        });
+      }
+
+
+      if (
         ![
           "captured",
           "authorized"
-        ].includes(payment.status)
+        ].includes(
+          payment.status
+        )
       ) {
+
         return res.status(400).json({
-          verified: false,
+
+          verified:
+            false,
+
           error:
             "Payment is not in a valid state."
         });
       }
 
+
+      /* =========================
+         VERIFY CART
+      ========================= */
+
+      const cartResult =
+        calculateCart(
+          req.body.cart
+        );
+
+
+      /*
+        Make sure the amount paid matches
+        the cart total.
+      */
+
+      const expectedAmount =
+        cartResult.total * 100;
+
+
+      if (
+        Number(payment.amount) !==
+        Number(expectedAmount)
+      ) {
+
+        return res.status(400).json({
+
+          verified:
+            false,
+
+          error:
+            "Payment amount does not match the order total."
+        });
+      }
+
+
+      /* =========================
+         CUSTOMER DETAILS
+      ========================= */
+
       const customer =
         req.body.customer || {};
 
-      const cartResult =
-        calculateCart(req.body.cart);
+
+      const name =
+        String(
+          customer.name || ""
+        ).trim();
+
 
       const phone =
-        cleanPhone(customer.phone);
+        cleanPhone(
+          customer.phone
+        );
+
 
       const email =
-        normalizeEmail(customer.email);
+        normalizeEmail(
+          customer.email
+        );
 
-      const authCustomer =
-        req.customer;
+
+      const address =
+        String(
+          customer.address || ""
+        ).trim();
+
+
+      if (
+        !name ||
+        !/^[0-9]{10}$/.test(phone) ||
+        !address
+      ) {
+
+        return res.status(400).json({
+
+          verified:
+            false,
+
+          error:
+            "Customer name, valid phone number and delivery address are required."
+        });
+      }
+
+
+      /*
+        If logged in:
+          use the customer's real account ID.
+
+        If guest:
+          use GUEST.
+      */
+
+      const customerId =
+        req.customer
+          ? req.customer.id
+          : "GUEST";
+
+
+      /* =========================
+         PREPARE GOOGLE SHEETS ORDER
+      ========================= */
 
       const orderData = {
+
         orderId:
           razorpay_order_id,
 
         customerId:
-          authCustomer.id,
+          customerId,
 
         name:
-          String(customer.name || "")
-            .trim(),
+          name,
 
         phone:
           phone,
@@ -701,8 +1117,7 @@ app.post(
           email,
 
         address:
-          String(customer.address || "")
-            .trim(),
+          address,
 
         products:
           cartResult.normalized
@@ -712,7 +1127,8 @@ app.post(
                 " x " +
                 item.qty +
                 " = ₹" +
-                item.price * item.qty
+                item.price *
+                  item.qty
             )
             .join(", "),
 
@@ -740,45 +1156,73 @@ app.post(
           new Date().toISOString()
       };
 
+
+      /* =========================
+         SAVE ORDER TO GOOGLE SHEETS
+      ========================= */
+
       try {
+
         await sheet(
           "saveOrder",
           {
-            order: orderData
+            order:
+              orderData
           }
         );
 
       } catch (sheetError) {
+
         console.error(
           "GOOGLE SHEETS SAVE ERROR:",
           sheetError
         );
 
+
         return res.status(500).json({
-          verified: false,
+
+          verified:
+            false,
+
           error:
             "Payment was successful, but the order could not be saved. Please contact BS Bites with payment ID: " +
             razorpay_payment_id
         });
       }
 
+
+      /* =========================
+         SUCCESS
+      ========================= */
+
       res.json({
-        verified: true,
+
+        verified:
+          true,
+
         paymentId:
           razorpay_payment_id,
+
         orderId:
           razorpay_order_id
       });
 
+
     } catch (error) {
+
       console.error(
         "VERIFY PAYMENT ERROR:",
         error
       );
 
+
       res.status(500).json({
-        verified: false,
+
+        verified:
+          false,
+
         error:
+          error.message ||
           "Could not verify the payment."
       });
     }
@@ -793,9 +1237,11 @@ app.post(
 app.listen(
   PORT,
   () => {
+
     console.log(
       "BS Bites running on port " +
       PORT
     );
+
   }
 );
