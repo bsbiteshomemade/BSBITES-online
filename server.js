@@ -2,7 +2,6 @@ const express = require("express");
 const crypto = require("crypto");
 const Razorpay = require("razorpay");
 
-
 const app = express();
 
 app.use(express.json({ limit: "100kb" }));
@@ -20,9 +19,9 @@ const SESSION_SECRET =
   "BSBITES_CHANGE_THIS_TO_A_LONG_RANDOM_SECRET";
 
 
-/* =========================
+/* =========================================================
    PRODUCTS
-========================= */
+========================================================= */
 
 const PRODUCTS = {
   "Milk Chocolate": 199,
@@ -31,9 +30,9 @@ const PRODUCTS = {
 };
 
 
-/* =========================
+/* =========================================================
    RAZORPAY
-========================= */
+========================================================= */
 
 const razorpay =
   KEY_ID && KEY_SECRET
@@ -44,9 +43,9 @@ const razorpay =
     : null;
 
 
-/* =========================
+/* =========================================================
    CORS
-========================= */
+========================================================= */
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -78,9 +77,9 @@ app.use((req, res, next) => {
 });
 
 
-/* =========================
+/* =========================================================
    HELPERS
-========================= */
+========================================================= */
 
 function cleanPhone(value) {
   return String(value || "")
@@ -134,9 +133,9 @@ function calculateCart(cart) {
 }
 
 
-/* =========================
-   PASSWORD HASHING
-========================= */
+/* =========================================================
+   PASSWORD
+========================================================= */
 
 function hashPassword(password, salt) {
   return crypto
@@ -145,9 +144,9 @@ function hashPassword(password, salt) {
 }
 
 
-/* =========================
+/* =========================================================
    LOGIN TOKEN
-========================= */
+========================================================= */
 
 function makeToken(customer) {
   const payload = {
@@ -164,13 +163,14 @@ function makeToken(customer) {
     .from(JSON.stringify(payload))
     .toString("base64url");
 
-  const signature = crypto
-    .createHmac(
-      "sha256",
-      SESSION_SECRET
-    )
-    .update(raw)
-    .digest("base64url");
+  const signature =
+    crypto
+      .createHmac(
+        "sha256",
+        SESSION_SECRET
+      )
+      .update(raw)
+      .digest("base64url");
 
   return raw + "." + signature;
 }
@@ -203,10 +203,6 @@ function readToken(req) {
       .update(raw)
       .digest("base64url");
 
-  /*
-    Prevent timingSafeEqual from throwing
-    when lengths are different.
-  */
   if (
     signature.length !==
     expected.length
@@ -252,6 +248,10 @@ function readToken(req) {
 }
 
 
+/* =========================================================
+   REQUIRED LOGIN
+========================================================= */
+
 function requireAuth(req, res, next) {
   const customer = readToken(req);
 
@@ -268,26 +268,20 @@ function requireAuth(req, res, next) {
 }
 
 
-/*
-  Optional login.
+/* =========================================================
+   OPTIONAL LOGIN
+   Guest customers are allowed.
+========================================================= */
 
-  If customer is logged in:
-      req.customer = customer
-
-  If customer is not logged in:
-      req.customer = null
-
-  This is what allows guest checkout.
-*/
 function optionalAuth(req, res, next) {
   req.customer = readToken(req);
   next();
 }
 
 
-/* =========================
+/* =========================================================
    GOOGLE SHEETS
-========================= */
+========================================================= */
 
 async function sheet(action, data) {
   if (!GOOGLE_SCRIPT_URL) {
@@ -296,22 +290,23 @@ async function sheet(action, data) {
     );
   }
 
-  const response = await fetch(
-    GOOGLE_SCRIPT_URL,
-    {
-      method: "POST",
+  const response =
+    await fetch(
+      GOOGLE_SCRIPT_URL,
+      {
+        method: "POST",
 
-      headers: {
-        "Content-Type":
-          "text/plain;charset=utf-8"
-      },
+        headers: {
+          "Content-Type":
+            "text/plain;charset=utf-8"
+        },
 
-      body: JSON.stringify({
-        action: action,
-        ...data
-      })
-    }
-  );
+        body: JSON.stringify({
+          action: action,
+          ...data
+        })
+      }
+    );
 
   const text =
     await response.text();
@@ -319,7 +314,8 @@ async function sheet(action, data) {
   let result = {};
 
   try {
-    result = JSON.parse(text);
+    result =
+      JSON.parse(text);
   } catch {
     result = {};
   }
@@ -340,9 +336,9 @@ async function sheet(action, data) {
 }
 
 
-/* =========================
-   BASIC ROUTES
-========================= */
+/* =========================================================
+   HEALTH CHECK
+========================================================= */
 
 app.get(
   "/health",
@@ -355,6 +351,10 @@ app.get(
 );
 
 
+/* =========================================================
+   RAZORPAY CONFIG
+========================================================= */
+
 app.get(
   "/api/config",
   (req, res) => {
@@ -365,13 +365,14 @@ app.get(
 );
 
 
-/* =========================
-   CUSTOMER REGISTER
-========================= */
+/* =========================================================
+   REGISTER
+========================================================= */
 
 app.post(
   "/api/auth/register",
   async (req, res) => {
+
     try {
 
       const name =
@@ -400,6 +401,7 @@ app.post(
         !/^[0-9]{10}$/.test(phone) ||
         password.length < 6
       ) {
+
         return res.status(400).json({
           error:
             "Please enter your name, a valid 10-digit mobile number and a password of at least 6 characters."
@@ -411,6 +413,7 @@ app.post(
         email &&
         !/^\S+@\S+\.\S+$/.test(email)
       ) {
+
         return res.status(400).json({
           error:
             "Please enter a valid email address."
@@ -422,12 +425,14 @@ app.post(
         await sheet(
           "findCustomer",
           {
-            identifier: phone
+            identifier:
+              phone
           }
         );
 
 
       if (existing.customer) {
+
         return res.status(409).json({
           error:
             "An account with this mobile number already exists. Please sign in."
@@ -441,11 +446,14 @@ app.post(
           await sheet(
             "findCustomer",
             {
-              identifier: email
+              identifier:
+                email
             }
           );
 
+
         if (existingEmail.customer) {
+
           return res.status(409).json({
             error:
               "An account with this email already exists. Please sign in."
@@ -468,6 +476,7 @@ app.post(
 
 
       const customer = {
+
         id:
           crypto.randomUUID(),
 
@@ -501,6 +510,7 @@ app.post(
 
 
       const safeCustomer = {
+
         id:
           customer.id,
 
@@ -516,6 +526,7 @@ app.post(
 
 
       res.json({
+
         token:
           makeToken(
             safeCustomer
@@ -523,6 +534,7 @@ app.post(
 
         customer:
           safeCustomer
+
       });
 
 
@@ -543,13 +555,14 @@ app.post(
 );
 
 
-/* =========================
-   CUSTOMER LOGIN
-========================= */
+/* =========================================================
+   LOGIN
+========================================================= */
 
 app.post(
   "/api/auth/login",
   async (req, res) => {
+
     try {
 
       const identifier =
@@ -567,6 +580,7 @@ app.post(
         !identifier ||
         !password
       ) {
+
         return res.status(400).json({
           error:
             "Please enter your mobile/email and password."
@@ -580,8 +594,12 @@ app.post(
           {
             identifier:
               identifier.includes("@")
-                ? normalizeEmail(identifier)
-                : cleanPhone(identifier)
+                ? normalizeEmail(
+                    identifier
+                  )
+                : cleanPhone(
+                    identifier
+                  )
           }
         );
 
@@ -591,6 +609,7 @@ app.post(
 
 
       if (!customer) {
+
         return res.status(401).json({
           error:
             "Account not found. Please check your details or create an account."
@@ -609,6 +628,7 @@ app.post(
         passwordHash !==
         customer.passwordHash
       ) {
+
         return res.status(401).json({
           error:
             "Incorrect password."
@@ -617,6 +637,7 @@ app.post(
 
 
       const safeCustomer = {
+
         id:
           customer.id,
 
@@ -632,6 +653,7 @@ app.post(
 
 
       res.json({
+
         token:
           makeToken(
             safeCustomer
@@ -639,6 +661,7 @@ app.post(
 
         customer:
           safeCustomer
+
       });
 
 
@@ -659,9 +682,9 @@ app.post(
 );
 
 
-/* =========================
+/* =========================================================
    CURRENT CUSTOMER
-========================= */
+========================================================= */
 
 app.get(
   "/api/auth/me",
@@ -677,9 +700,9 @@ app.get(
 );
 
 
-/* =========================
+/* =========================================================
    CUSTOMER ORDERS
-========================= */
+========================================================= */
 
 app.get(
   "/api/orders",
@@ -720,10 +743,10 @@ app.get(
 );
 
 
-/* =========================
+/* =========================================================
    CREATE RAZORPAY ORDER
-   GUEST CHECKOUT ENABLED
-========================= */
+   LOGIN NOT REQUIRED
+========================================================= */
 
 app.post(
   "/api/create-order",
@@ -731,13 +754,6 @@ app.post(
   async (req, res) => {
 
     try {
-
-      /*
-        IMPORTANT:
-        There is NO requireAuth here.
-
-        A customer can pay without logging in.
-      */
 
       if (!razorpay) {
 
@@ -811,13 +827,19 @@ app.post(
           notes: {
 
             customer_name:
-              name.slice(0, 255),
+              name.slice(
+                0,
+                255
+              ),
 
             customer_phone:
               phone,
 
             customer_email:
-              email.slice(0, 255),
+              email.slice(
+                0,
+                255
+              ),
 
             products:
               cartResult.normalized
@@ -828,7 +850,10 @@ app.post(
                     item.qty
                 )
                 .join(", ")
-                .slice(0, 255)
+                .slice(
+                  0,
+                  255
+                )
           }
         });
 
@@ -843,6 +868,7 @@ app.post(
 
         currency:
           razorpayOrder.currency
+
       });
 
 
@@ -863,10 +889,10 @@ app.post(
 );
 
 
-/* =========================
-   VERIFY PAYMENT
-   GUEST CHECKOUT ENABLED
-========================= */
+/* =========================================================
+   VERIFY RAZORPAY PAYMENT
+   LOGIN NOT REQUIRED
+========================================================= */
 
 app.post(
   "/api/verify-payment",
@@ -875,20 +901,16 @@ app.post(
 
     try {
 
-      /*
-        IMPORTANT:
-        There is NO requireAuth here.
-
-        Guest customers can complete payment.
-      */
-
       if (!razorpay) {
 
         return res.status(503).json({
-          verified: false,
+
+          verified:
+            false,
 
           error:
             "Online payment is not configured yet."
+
         });
       }
 
@@ -913,13 +935,14 @@ app.post(
 
           error:
             "Missing payment verification data."
+
         });
       }
 
 
-      /* =========================
-         VERIFY RAZORPAY SIGNATURE
-      ========================= */
+      /* -----------------------------------------
+         VERIFY SIGNATURE
+      ----------------------------------------- */
 
       const expectedSignature =
         crypto
@@ -947,13 +970,14 @@ app.post(
 
           error:
             "Payment signature verification failed."
+
         });
       }
 
 
-      /* =========================
-         FETCH PAYMENT
-      ========================= */
+      /* -----------------------------------------
+         GET PAYMENT
+      ----------------------------------------- */
 
       const payment =
         await razorpay.payments.fetch(
@@ -963,7 +987,7 @@ app.post(
 
       if (
         payment.order_id !==
-          razorpay_order_id
+        razorpay_order_id
       ) {
 
         return res.status(400).json({
@@ -973,6 +997,7 @@ app.post(
 
           error:
             "Payment does not belong to this order."
+
         });
       }
 
@@ -993,24 +1018,20 @@ app.post(
 
           error:
             "Payment is not in a valid state."
+
         });
       }
 
 
-      /* =========================
-         VERIFY CART
-      ========================= */
+      /* -----------------------------------------
+         CHECK CART
+      ----------------------------------------- */
 
       const cartResult =
         calculateCart(
           req.body.cart
         );
 
-
-      /*
-        Make sure the amount paid matches
-        the cart total.
-      */
 
       const expectedAmount =
         cartResult.total * 100;
@@ -1028,13 +1049,14 @@ app.post(
 
           error:
             "Payment amount does not match the order total."
+
         });
       }
 
 
-      /* =========================
+      /* -----------------------------------------
          CUSTOMER DETAILS
-      ========================= */
+      ----------------------------------------- */
 
       const customer =
         req.body.customer || {};
@@ -1077,17 +1099,20 @@ app.post(
 
           error:
             "Customer name, valid phone number and delivery address are required."
+
         });
       }
 
 
-      /*
-        If logged in:
-          use the customer's real account ID.
+      /* -----------------------------------------
+         CUSTOMER ID
 
-        If guest:
-          use GUEST.
-      */
+         Logged in:
+             real customer ID
+
+         Guest:
+             GUEST
+      ----------------------------------------- */
 
       const customerId =
         req.customer
@@ -1095,9 +1120,9 @@ app.post(
           : "GUEST";
 
 
-      /* =========================
-         PREPARE GOOGLE SHEETS ORDER
-      ========================= */
+      /* -----------------------------------------
+         ORDER DATA
+      ----------------------------------------- */
 
       const orderData = {
 
@@ -1128,7 +1153,7 @@ app.post(
                 item.qty +
                 " = ₹" +
                 item.price *
-                  item.qty
+                item.qty
             )
             .join(", "),
 
@@ -1157,9 +1182,9 @@ app.post(
       };
 
 
-      /* =========================
-         SAVE ORDER TO GOOGLE SHEETS
-      ========================= */
+      /* -----------------------------------------
+         SAVE TO GOOGLE SHEETS
+      ----------------------------------------- */
 
       try {
 
@@ -1187,15 +1212,16 @@ app.post(
           error:
             "Payment was successful, but the order could not be saved. Please contact BS Bites with payment ID: " +
             razorpay_payment_id
+
         });
       }
 
 
-      /* =========================
+      /* -----------------------------------------
          SUCCESS
-      ========================= */
+      ----------------------------------------- */
 
-      res.json({
+      return res.json({
 
         verified:
           true,
@@ -1205,6 +1231,7 @@ app.post(
 
         orderId:
           razorpay_order_id
+
       });
 
 
@@ -1216,7 +1243,7 @@ app.post(
       );
 
 
-      res.status(500).json({
+      return res.status(500).json({
 
         verified:
           false,
@@ -1224,15 +1251,16 @@ app.post(
         error:
           error.message ||
           "Could not verify the payment."
+
       });
     }
   }
 );
 
 
-/* =========================
+/* =========================================================
    START SERVER
-========================= */
+========================================================= */
 
 app.listen(
   PORT,
