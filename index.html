@@ -70,6 +70,9 @@ footer a{color:#ffd5c8;text-decoration:none}
 .auth-panel{position:absolute;right:0;top:0;height:100%;width:min(460px,100%);background:var(--cream);padding:22px;overflow:auto}
 .auth-panel input{width:100%;padding:12px;border:1px solid #d9c1b2;border-radius:10px;background:white;margin:6px 0 10px;font:inherit}
 .auth-panel label{font-weight:bold;font-size:.9rem}
+.password-wrap{position:relative}
+.password-wrap input{padding-right:52px}
+.password-toggle{position:absolute;right:8px;top:7px;border:0;background:transparent;color:#6b2f20;font-weight:bold;cursor:pointer;padding:9px 7px;font-size:.82rem}
 .auth-submit{width:100%;border:0;background:var(--brown2);color:white;padding:13px;border-radius:11px;font-weight:bold;cursor:pointer;margin-top:8px}
 .auth-link{border:0;background:transparent;color:var(--brown2);text-decoration:underline;cursor:pointer;font:inherit}
 .auth-msg{margin:10px 0;padding:10px;border-radius:10px;background:#fff0eb;color:#6b2f20;font-size:.9rem}
@@ -183,7 +186,7 @@ footer a{color:#ffd5c8;text-decoration:none}
 
       <button id="payOnlineBtn" class="pay-btn" type="button" onclick="startPayment()">Pay Securely</button>
       <button type="button" id="whatsappBtn" class="whatsapp" onclick="sendWhatsApp()">Send Order Confirmation on WhatsApp</button>
-      <p class="notice">After successful payment, your order will be verified before it is confirmed. If a payment fails, you can retry without losing your cart.</p>
+      <p class="notice">You do <b>not</b> need to create an account to order. After successful payment, your order will be verified before it is confirmed.</p>
     </div>
   </aside>
 </div>
@@ -193,11 +196,11 @@ footer a{color:#ffd5c8;text-decoration:none}
     <button class="close" onclick="closeAccount()">×</button>
     <div id="loginView">
       <h2 style="color:var(--brown);margin:5px 0 8px">Welcome to BS Bites 👋</h2>
-      <p style="color:#80665d;margin-bottom:18px">Sign in to see your current and previous orders.</p>
+      <p style="color:#80665d;margin-bottom:18px">Sign in to see your current and previous orders. <b>You can also place an order without signing in.</b></p>
       <label>Mobile number or email</label>
       <input id="loginIdentifier" placeholder="10-digit mobile or email" autocomplete="username">
       <label>Password</label>
-      <input id="loginPassword" type="password" placeholder="Your password" autocomplete="current-password">
+      <div class="password-wrap"><input id="loginPassword" type="password" placeholder="Your password" autocomplete="current-password"><button type="button" class="password-toggle" onclick="togglePassword('loginPassword',this)">Show</button></div>
       <button class="auth-submit" onclick="loginCustomer()">Sign in</button>
       <div id="loginMsg" class="auth-msg" style="display:none"></div>
       <p style="text-align:center;margin-top:14px">New customer? <button class="auth-link" onclick="showRegister()">Create an account</button></p>
@@ -208,7 +211,7 @@ footer a{color:#ffd5c8;text-decoration:none}
       <label>Name</label><input id="regName" placeholder="Your name" autocomplete="name">
       <label>Mobile number</label><input id="regPhone" type="tel" placeholder="10-digit mobile number" autocomplete="tel">
       <label>Email (optional)</label><input id="regEmail" type="email" placeholder="you@example.com" autocomplete="email">
-      <label>Password</label><input id="regPassword" type="password" placeholder="At least 6 characters" autocomplete="new-password">
+      <label>Password</label><div class="password-wrap"><input id="regPassword" type="password" placeholder="At least 6 characters" autocomplete="new-password"><button type="button" class="password-toggle" onclick="togglePassword('regPassword',this)">Show</button></div>
       <button class="auth-submit" onclick="registerCustomer()">Create account</button>
       <div id="registerMsg" class="auth-msg" style="display:none"></div>
       <p style="text-align:center;margin-top:14px">Already registered? <button class="auth-link" onclick="showLogin()">Sign in</button></p>
@@ -279,6 +282,14 @@ function showLogin(){document.getElementById('loginView').style.display='block';
 function showRegister(){document.getElementById('loginView').style.display='none';document.getElementById('registerView').style.display='block';document.getElementById('accountView').style.display='none';}
 function showAccount(){document.getElementById('loginView').style.display='none';document.getElementById('registerView').style.display='none';document.getElementById('accountView').style.display='block';if(currentCustomer)document.getElementById('accountWelcome').textContent=`Welcome back, ${currentCustomer.name}!`; }
 function updateAccountButton(){const b=document.getElementById('accountBtn');if(!b)return;b.textContent=currentCustomer?`Hi, ${currentCustomer.name.split(' ')[0]} 👋`:'Sign in';}
+function togglePassword(id, btn){
+  const input=document.getElementById(id);
+  if(!input) return;
+  const showing=input.type==="text";
+  input.type=showing?"password":"text";
+  btn.textContent=showing?"Show":"Hide";
+}
+
 async function registerCustomer(){
   const name=document.getElementById('regName').value.trim();
   const phone=document.getElementById('regPhone').value.replace(/\D/g,'');
@@ -359,7 +370,6 @@ function renderCart(){
 function total(){return cart.reduce((s,x)=>s+x.price*x.qty,0)}
 
 async function startPayment(){
-  if(!authToken){alert("Please sign in or create a BS Bites account before placing an order.");openAccount();return;}
   if(!cart.length){alert("Please add at least one product.");return;}
   const name = document.getElementById("customerName").value.trim();
   const phone = document.getElementById("customerPhone").value.trim();
@@ -421,7 +431,7 @@ async function startPayment(){
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify({
               ...payment,
-              customer:{name, phone, address},
+              customer:{name, phone, email, address},
               cart:cart.map(x=>({name:x.name, qty:x.qty}))
             })
           });
@@ -514,7 +524,7 @@ window.addEventListener("error", function(event){
 
 renderCart();
 updateAccountButton();
-if(authToken) loadAccount(); else setTimeout(()=>openAccount(),350);
+if(authToken) loadAccount();
 loadPaymentConfig().then(ok => {
   const status = document.getElementById("paymentStatus");
   if(status){
