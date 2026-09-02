@@ -479,7 +479,7 @@ app.post(
             products:
               normalized
                 .map(
-                  x=>${x.name} x ${x.qty}
+                  x=>`${x.name} x ${x.qty}`
                 )
                 .join(", ")
                 .slice(0,255)
