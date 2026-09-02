@@ -468,7 +468,7 @@ app.post(
         await razorpay.orders.create({
           amount:total*100,
           currency:"INR",
-          receipt:BSB-${Date.now()},
+          receipt:`BSB-${Date.now()}`,
           notes:{
             customer_name:
               name.slice(0,255),
